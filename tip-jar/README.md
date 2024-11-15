@@ -3,7 +3,7 @@
 ## Environment Variables
 
 ```bash
-export PRIVATE_KEY=your_private_key
+export PRIVATE_KEY=your_private_key # for testing: 0xb6b15c8cb491557369f3c7d2c287b053eb229daa9c22138887752191c9520659
 export USER_1=0x00A2895816e64F152FF81c8A931DC1bd9F5c3ce3 # User 1 Address
 ```
 
