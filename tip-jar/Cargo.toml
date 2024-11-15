@@ -1,0 +1,42 @@
+[package]
+name = "tip_jar"
+version = "0.1.9"
+edition = "2021"
+license = "MIT"
+keywords = ["arbitrum", "ethereum", "stylus", "alloy"]
+description = "A simple tip jar contract for the Stylus SDK"
+
+[dependencies]
+alloy-primitives = "=0.7.6"
+alloy-sol-types = "=0.7.6"
+alloy-sol-macro = "=0.7.6"
+alloy-sol-macro-expander = "=0.7.6"
+alloy-sol-macro-input = "=0.7.6"
+mini-alloc = "0.4.2"
+stylus-sdk = "0.6.0"
+hex = "0.4.3"
+dotenv = "0.15.0"
+serde_json = "1.0.132"
+serde = "1.0"
+
+[dev-dependencies]
+tokio = { version = "1.12.0", features = ["full"] }
+eyre = "0.6.8"
+
+[features]
+export-abi = ["stylus-sdk/export-abi"]
+debug = ["stylus-sdk/debug"]
+
+[[bin]]
+name = "tip_jar"
+path = "src/main.rs"
+
+[lib]
+crate-type = ["lib", "cdylib"]
+
+[profile.release]
+codegen-units = 1
+strip = true
+lto = true
+panic = "abort"
+opt-level = "s"
