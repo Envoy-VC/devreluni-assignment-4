@@ -14,9 +14,8 @@ sol! {
     event TipUser(address indexed to, uint256 amount);
     event WithdrawTip(address indexed to, uint256 amount);
 
-    error TipFailed(address to, uint256 amount);
-    error InsufficientBalance(address from, uint256 amount);
-    error WithdrawErrorNoFunds();
+    error InvalidTipAmount();
+    error NoFundsToWithdraw();
     error WithdrawError(address to, uint256 amount);
 }
 
@@ -29,9 +28,8 @@ sol_storage! {
 
 #[derive(SolidityError)]
 pub enum TipJarErrors {
-    TipFailed(TipFailed),
-    InsufficientBalance(InsufficientBalance),
-    WithdrawErrorNoFunds(WithdrawErrorNoFunds),
+    InvalidTipAmount(InvalidTipAmount),
+    NoFundsToWithdraw(NoFundsToWithdraw),
     WithdrawError(WithdrawError),
 }
 
@@ -42,17 +40,17 @@ impl TipJar {
     }
 
     #[payable]
-    pub fn tip(&mut self, to: Address, amount: U256) -> Result<(), TipJarErrors> {
+    pub fn tip(&mut self, to: Address) -> Result<(), TipJarErrors> {
         let msg_value: U256 = msg::value();
-        if msg_value < amount {
-            return Err(TipJarErrors::InsufficientBalance(InsufficientBalance {
-                from: msg::sender(),
-                amount,
-            }));
+        if msg_value <= U256::from(0) {
+            return Err(TipJarErrors::InvalidTipAmount(InvalidTipAmount {}));
         }
         let balance: U256 = self.balances.get(to);
         self.balances.insert(to, balance + msg_value);
-        evm::log(TipUser { to, amount: msg_value });
+        evm::log(TipUser {
+            to,
+            amount: msg_value,
+        });
 
         Ok(())
     }
@@ -60,7 +58,7 @@ impl TipJar {
     pub fn withdraw(&mut self, user: Address) -> Result<(), TipJarErrors> {
         let balance: U256 = self.balances.get(user);
         if balance == U256::from(0) {
-            return Err(TipJarErrors::WithdrawErrorNoFunds(WithdrawErrorNoFunds {}));
+            return Err(TipJarErrors::NoFundsToWithdraw(NoFundsToWithdraw {}));
         }
         let result: Result<Vec<u8>, Error> = call(Call::new_in(self).value(balance), user, &[]);
         if result.is_err() {
