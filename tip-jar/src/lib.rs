@@ -51,8 +51,8 @@ impl TipJar {
             }));
         }
         let balance: U256 = self.balances.get(to);
-        self.balances.insert(to, balance + amount);
-        evm::log(TipUser { to, amount });
+        self.balances.insert(to, balance + msg_value);
+        evm::log(TipUser { to, amount: msg_value });
 
         Ok(())
     }
