@@ -1,15 +1,22 @@
+use std::str::FromStr;
+
 use dotenv::dotenv;
-use ethers::{
-    middleware::SignerMiddleware,
-    prelude::abigen,
-    providers::{Http, Middleware, Provider},
-    signers::{LocalWallet, Signer},
-    types::{Address, U256},
-    utils::WEI_IN_ETHER,
+
+use alloy::{
+    network::EthereumWallet,
+    primitives::{Address, U256},
+    providers::{Provider, ProviderBuilder},
+    signers::local::PrivateKeySigner,
+    sol,
 };
 use eyre::eyre;
-use std::str::FromStr;
-use std::sync::Arc;
+
+sol!(
+    #[allow(missing_docs)]
+    #[sol(rpc)]
+    TipJar,
+    "artifacts/TipJar.json"
+);
 
 /// Your private key file path.
 const PRIV_KEY_PATH: &str = "PRIVATE_KEY";
@@ -29,62 +36,63 @@ async fn main() -> eyre::Result<()> {
     let contract_address = std::env::var(STYLUS_CONTRACT_ADDRESS)
         .map_err(|_| eyre!("No {} env var set", STYLUS_CONTRACT_ADDRESS))?;
 
-    abigen!(
-        TipJar,
-        r#"[
-            function getBalance(address _address) external view returns (uint256)
-            function tip(address to) external payable
-            function withdraw(address user) external
-        ]"#
-    );
+    println!("Private key: {}", private_key);
+    println!("RPC URL: {}", rpc_url);
+    println!("Contract Address: {}", contract_address);
 
-    let provider = Provider::<Http>::try_from(rpc_url)?;
+    let signer: PrivateKeySigner = PrivateKeySigner::from_str(&private_key).unwrap();
+    let wallet = EthereumWallet::from(signer.clone());
+
+    let provider = ProviderBuilder::new()
+        .with_recommended_fillers()
+        .wallet(wallet)
+        .on_http(rpc_url.parse()?);
+
     let address: Address = contract_address.parse()?;
     let user1_address: Address = "0x00A2895816e64F152FF81c8A931DC1bd9F5c3ce3".parse()?;
 
-    let wallet = LocalWallet::from_str(&private_key).unwrap();
-    let wallet_address: Address = wallet.address();
-    let chain_id: u64 = provider.get_chainid().await?.as_u64();
-
-    let client = Arc::new(SignerMiddleware::new(
-        provider,
-        wallet.clone().with_chain_id(chain_id),
-    ));
-
-    let client_cloned = client.clone();
-
-    let tip_jar = TipJar::new(address, client);
-    let mut tip_balance: U256 = tip_jar.get_balance(wallet_address).call().await?;
+    let tip_jar = TipJar::new(contract_address.parse()?, provider.clone());
+    let mut tip_balance: U256 = tip_jar.getBalance(user1_address).call().await?._0;
     println!("Initial User 1 Tip Balance = {:?}", tip_balance);
 
-    let mut balance = client_cloned.get_balance(user1_address, None).await?;
+    let mut balance = provider.get_balance(user1_address).await?;
     println!("Initial User 1 Balance = {:?}", balance);
 
-    let value = U256::from(WEI_IN_ETHER);
+    let value = U256::from(1e18);
 
-    tip_jar
+    let mut tx_hash = tip_jar
         .tip(user1_address)
         .value(value)
         .send()
         .await?
+        .watch()
         .await?;
 
-    tip_balance = tip_jar.get_balance(user1_address).call().await?;
+    println!("Tip Success, TxHash = {:?}", tx_hash.to_string());
+
+    tip_balance = tip_jar.getBalance(user1_address).call().await?._0;
     println!("After Tip User 1 Tip Balance = {:?}", tip_balance);
 
-    balance = client_cloned.get_balance(user1_address, None).await?;
+    balance = provider.get_balance(user1_address).await?;
     println!("After Tip User 1 Balance = {:?}", balance);
 
-    balance = client_cloned.get_balance(address, None).await?;
+    balance = provider.get_balance(address).await?;
     println!("After Tip Contract Balance = {:?}", balance);
 
-    tip_jar.withdraw(user1_address).send().await?.await?;
+    tx_hash = tip_jar
+        .withdraw(user1_address)
+        .send()
+        .await?
+        .watch()
+        .await?;
 
-    tip_balance = tip_jar.get_balance(user1_address).call().await?;
+    println!("Withdraw Success, TxHash = {:?}", tx_hash.to_string());
+
+    tip_balance = tip_jar.getBalance(user1_address).call().await?._0;
     println!("After Withdraw User 1 Tip Balance = {:?}", tip_balance);
-    balance = client_cloned.get_balance(user1_address, None).await?;
+    balance = provider.get_balance(user1_address).await?;
     println!("After Withdraw User 1 Balance = {:?}", balance);
-    balance = client_cloned.get_balance(address, None).await?;
+    balance = provider.get_balance(address).await?;
     println!("After Withdraw Contract Balance = {:?}", balance);
     Ok(())
 }
